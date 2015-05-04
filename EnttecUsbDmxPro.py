@@ -7,6 +7,7 @@ import sys
 import serial
 import serial.tools
 import serial.tools.list_ports
+import struct
 import threading
 import time
 import binascii
@@ -16,11 +17,15 @@ class EnttecUsbDmxPro:
 # Constructor, destructors and globals
     def __init__(self):
         self.serial = serial.Serial()
-        self.debug = {'SerialBuffer':False, 'RXWarning':False}
+        self.debug = {'SerialBuffer':True, 'RXWarning':True}
         self.widget = {'SerialNumber':0x0FFFFFFFF, 'UserParameters':{'FirmwareVersion':[0,0], 'DMXBreak':96, 'DMXMarkAfterBreak':10, 'DMXRate':40}} # Initialize the register. Note that DMXOutBreak and DMXMarkAfterBreak are in 10.67us units
         self.widget_event = {'SerialNumber':threading.Event(), 'UserParameters':threading.Event(), 'ThreadExit':threading.Event()} # Initialize the data requests variable
         self.serial.port = ""
         self.dmxRX = {"status":0,"frame":[]}
+        if sys.version_info > (3,0):
+            self.py2 = False
+        else:
+            self.py2 = True
     def setPort(self,port,baud=57600):
         self.serial.port = port
         self.serial.baudrate = baud
@@ -86,6 +91,8 @@ class EnttecUsbDmxPro:
                 if self.serial.inWaiting() > 0:
                     rx += self.serial.read(self.serial.inWaiting()) # Read the buffer into a variable
                     for i in rx: # Convert the byte string into something a little more useful
+                        if self.py2:
+                            i =struct.unpack('B',i)[0]
                         self.serialbuffer += [i]
                 rx = b''
                 si = 0
@@ -96,6 +103,8 @@ class EnttecUsbDmxPro:
                         break
                 if si > 0: # Remove anything before the start byte
                     if self.debug['RXWarning']:
+                        if self.debug['SerialBuffer']:
+                            print("IVD:",self.serialbuffer)
                         sys.stderr.write('RX_WARNING: Removing invalid data from buffer\n')
                     self.serialbuffer = self.serialbuffer[si:-1]
                 if len(self.serialbuffer) >= 4:
@@ -104,6 +113,8 @@ class EnttecUsbDmxPro:
                     m_cont = self.serialbuffer[4:4+m_size]
                     endbyte_loc=4+m_size
                     if endbyte_loc >= len(self.serialbuffer):
+                        if self.debug['SerialBuffer']:
+                            print(self.serialbuffer)
                         if len(m_cont) == m_size:
                             if self.debug['RXWarning']:
                                 sys.stderr.write('RX_WARNING: No end byte was found, but the message appears to be complete. Message will be parsed.\n')
@@ -113,6 +124,8 @@ class EnttecUsbDmxPro:
                             if self.debug['RXWarning']:
                                 sys.stderr.write('RX_WARNING: Recieved incomplete message {0}\n'.format(self.serialbuffer))
                     elif self.serialbuffer[endbyte_loc] != 0xE7:
+                        if self.debug['SerialBuffer']:
+                            print(self.serialbuffer)
                         if self.debug['RXWarning']:
                             sys.stderr.write('RX_WARNING: Malformed message! Expecting an end byte, but did not find one! Found byte {0} at location {2} in self.serialbuffer {1}\n'.format(self.serialbuffer[4+m_size],self.serialbuffer,endbyte_loc))
                         self.serialbuffer = self.serialbuffer[endbyte_loc+1:]

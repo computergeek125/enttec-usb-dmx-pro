@@ -7,6 +7,7 @@ import sys
 import serial
 #import serial.tools
 #import serial.tools.list_ports
+import struct
 import threading
 import time
 import binascii
@@ -21,6 +22,10 @@ class EnttecUsbDmxProWidget:
         self.widget_event = {'SerialNumber':threading.Event(), 'UserParameters':threading.Event(), 'ThreadExit':threading.Event()} # Initialize the data requests variable
         self.serial.port = ""
         self.dmxRX = {"status":0,"frame":[]}
+        if sys.version_info > (3,0):
+            self.py2 = False
+        else:
+            self.py2 = True
     def setPort(self,port,baud=57600):
         self.serial.port = port
         self.serial.baudrate = baud
@@ -86,6 +91,8 @@ class EnttecUsbDmxProWidget:
                 if self.serial.inWaiting() > 0:
                     rx += self.serial.read(self.serial.inWaiting()) # Read the buffer into a variable
                     for i in rx: # Convert the byte string into something a little more useful
+                        if self.py2:
+                            i =struct.unpack('B',i)[0]
                         self.serialbuffer += [i]
                 rx = b''
                 si = 0
@@ -95,6 +102,8 @@ class EnttecUsbDmxProWidget:
                     else:
                         break
                 if si > 0: # Remove anything before the start byte
+                    if self.debug['SerialBuffer']:
+                        print("IVD:",self.serialbuffer)
                     if self.debug['RXWarning']:
                         sys.stderr.write('RX_WARNING: Removing invalid data from buffer\n')
                     self.serialbuffer = self.serialbuffer[si:-1]

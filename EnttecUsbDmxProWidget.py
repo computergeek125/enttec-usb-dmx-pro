@@ -10,7 +10,6 @@ import serial
 import struct
 import threading
 import time
-import binascii
 import traceback
 
 class EnttecUsbDmxProWidget:
@@ -63,6 +62,8 @@ class EnttecUsbDmxProWidget:
         print("Closing Enttec USB DMX Pro on",self.serial.port,"at",self.serial.baudrate,"baud")
         self.serial.close() # Close the serial port
         print("Close successful!")
+    def clearBuffer(self):
+        self.serialbuffer = []
     def close(self): 
         self.disconnect()
 

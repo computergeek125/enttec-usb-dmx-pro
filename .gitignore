@@ -41,6 +41,10 @@ htmlcov/
 .cache
 nosetests.xml
 coverage.xml
+<<<<<<< HEAD
+=======
+*,cover
+>>>>>>> refs/remotes/origin/master
 
 # Translations
 *.mo
@@ -54,6 +58,9 @@ docs/_build/
 
 # PyBuilder
 target/
+<<<<<<< HEAD
 
 # OSX ignored files
 .DS_Store
+=======
+>>>>>>> refs/remotes/origin/master

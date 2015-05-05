@@ -42,17 +42,12 @@ class EnttecUsbDmxProWidget:
 # Port control
     def connect(self):
         # Open and connect to the serial port
-        if self.serial.isOpen():
-            print(serial)
-            disconnect()
-        print("Opening Enttec USB DMX Pro on",self.serial.port,"at",self.serial.baudrate,"baud")
         self.serial.open()
         self.widget_event['ThreadExit'].clear()
         self.thread_read = threading.Thread(target=self.reader)
         self.thread_read.setDaemon(True)
         self.thread_read.setName("EnttecUsbDmxPro Reader on "+self.serial.port)
         self.thread_read.start()
-        print("Open successful!")
     def open(self, baud=57600): # 
         self.connect(baud)
     def isOpen(self):
@@ -102,8 +97,6 @@ class EnttecUsbDmxProWidget:
                     else:
                         break
                 if si > 0: # Remove anything before the start byte
-                    if self.debug['SerialBuffer']:
-                        print("IVD:",self.serialbuffer)
                     if self.debug['RXWarning']:
                         sys.stderr.write('RX_WARNING: Removing invalid data from buffer\n')
                     self.serialbuffer = self.serialbuffer[si:-1]
@@ -113,8 +106,6 @@ class EnttecUsbDmxProWidget:
                     m_cont = self.serialbuffer[4:4+m_size]
                     endbyte_loc=4+m_size
                     if endbyte_loc >= len(self.serialbuffer):
-                        if self.debug['SerialBuffer']:
-                            print(self.serialbuffer)
                         if len(m_cont) == m_size:
                             if self.debug['RXWarning']:
                                 sys.stderr.write('RX_WARNING: No end byte was found, but the message appears to be complete. Message will be parsed.\n')
@@ -124,14 +115,10 @@ class EnttecUsbDmxProWidget:
                             if self.debug['RXWarning']:
                                 sys.stderr.write('RX_WARNING: Recieved incomplete message {0}\n'.format(self.serialbuffer))
                     elif self.serialbuffer[endbyte_loc] != 0xE7:
-                        if self.debug['SerialBuffer']:
-                            print(self.serialbuffer)
                         if self.debug['RXWarning']:
                             sys.stderr.write('RX_WARNING: Malformed message! Expecting an end byte, but did not find one! Found byte {0} at location {2} in self.serialbuffer {1}\n'.format(self.serialbuffer[4+m_size],self.serialbuffer,endbyte_loc))
                         self.serialbuffer = self.serialbuffer[endbyte_loc+1:]
                     else:
-                        if self.debug['SerialBuffer']:
-                            print(self.serialbuffer)
                         self.parse(m_label,m_cont)
                         if len(self.serialbuffer) > endbyte_loc:
                             self.serialbuffer = self.serialbuffer[endbyte_loc+1:]

@@ -17,7 +17,7 @@ class EnttecUsbDmxPro:
 # Constructor, destructors and globals
     def __init__(self):
         self.serial = serial.Serial()
-        self.debug = {'SerialBuffer':True, 'RXWarning':True}
+        self.debug = {'SerialBuffer':False, 'RXWarning':False}
         self.widget = {'SerialNumber':0x0FFFFFFFF, 'UserParameters':{'FirmwareVersion':[0,0], 'DMXBreak':96, 'DMXMarkAfterBreak':10, 'DMXRate':40}} # Initialize the register. Note that DMXOutBreak and DMXMarkAfterBreak are in 10.67us units
         self.widget_event = {'SerialNumber':threading.Event(), 'UserParameters':threading.Event(), 'ThreadExit':threading.Event()} # Initialize the data requests variable
         self.serial.port = ""

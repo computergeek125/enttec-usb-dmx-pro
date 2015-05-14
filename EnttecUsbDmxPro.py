@@ -5,8 +5,12 @@
 
 import sys
 import serial
-import serial.tools
-import serial.tools.list_ports
+try:
+	import serial.tools
+	import serial.tools.list_ports
+	serial_tools_avail = True
+except ImportError:
+	serial_tools_avail = False
 import struct
 import threading
 import time

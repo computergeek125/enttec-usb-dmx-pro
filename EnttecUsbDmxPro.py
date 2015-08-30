@@ -62,7 +62,10 @@ class EnttecUsbDmxPro:
     def isOpen(self):
         return self.serial.isOpen()
     def list(self):
-        print(serial.tools.list_ports.comports())
+        if serial_tools_avail:
+            print(serial.tools.list_ports.comports())
+        else:
+            raise RuntimeError("Serial Tools is not available")
     def disconnect(self):
         # Disconnects from the serial port and closes read thread
         print('Stopping the read thread...')

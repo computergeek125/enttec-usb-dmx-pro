@@ -16,16 +16,21 @@ import threading
 import time
 import binascii
 import traceback
+import colorama
 
 class EnttecUsbDmxPro:
 # Constructor, destructors and globals
     def __init__(self):
+        colorama.init(autoreset=True)
         self.serial = serial.Serial()
-        self.debug = {'SerialBuffer':False, 'RXWarning':False}
+        self.debug = {'SerialBuffer':False, 'RXWarning':False, "RXMessage":False, "TX":True}
         self.widget = {'SerialNumber':0x0FFFFFFFF, 'UserParameters':{'FirmwareVersion':[0,0], 'DMXBreak':96, 'DMXMarkAfterBreak':10, 'DMXRate':40}} # Initialize the register. Note that DMXOutBreak and DMXMarkAfterBreak are in 10.67us units
         self.widget_event = {'SerialNumber':threading.Event(), 'UserParameters':threading.Event(), 'ThreadExit':threading.Event()} # Initialize the data requests variable
         self.serial.port = ""
         self.dmxRX = {"status":0,"frame":[]}
+        self.dmxRXDelta = []
+        self.receivedEvent = threading.Event()
+        self.receivedEvent.clear()
         if sys.version_info > (3,0):
             self.py2 = False
         else:
@@ -57,7 +62,7 @@ class EnttecUsbDmxPro:
         self.thread_read.setName("EnttecUsbDmxPro Reader on "+self.serial.port)
         self.thread_read.start()
         print("Open successful!")
-    def open(self, baud=57600): # 
+    def open(self, baud=57600): # Fix baudrate bug
         self.connect(baud)
     def isOpen(self):
         return self.serial.isOpen()
@@ -84,7 +89,10 @@ class EnttecUsbDmxPro:
         ll = l-(lm << 8)
         if l <= 600:
             if self.isOpen():
-                self.serial.write(bytearray([0x7E,label,ll,lm]+message+[0xE7]))
+                tx=[0x7E,label,ll,lm]+message+[0xE7]
+                self.serial.write(bytearray(tx))
+                if (self.debug['TX']):
+                    sys.stderr.write("TX:{0}\n".format(tx))
         else:
             sys.stderr.write('TX_ERROR: Malformed message! The message to be send is too long!\n')
         
@@ -118,6 +126,8 @@ class EnttecUsbDmxPro:
                     m_label = self.serialbuffer[1]
                     m_size = self.serialbuffer[2] + (self.serialbuffer[3] << 8)
                     m_cont = self.serialbuffer[4:4+m_size]
+                    if (self.debug['RXMessage']):
+                        sys.stderr.write("{0}: {1}, {2}\n".format(m_label, m_size, m_cont))
                     endbyte_loc=4+m_size
                     if endbyte_loc >= len(self.serialbuffer):
                         if self.debug['SerialBuffer']:
@@ -129,7 +139,7 @@ class EnttecUsbDmxPro:
                             self.serialbuffer = []
                         else:
                             if self.debug['RXWarning']:
-                                sys.stderr.write('RX_WARNING: Recieved incomplete message {0}\n'.format(self.serialbuffer))
+                                sys.stderr.write('RX_WARNING: Received incomplete message {0}\n'.format(self.serialbuffer))
                     elif self.serialbuffer[endbyte_loc] != 0xE7:
                         if self.debug['SerialBuffer']:
                             print(self.serialbuffer)
@@ -160,24 +170,33 @@ class EnttecUsbDmxPro:
                 i += 1
             self.widget['SerialNumber'] = sn
             self.widget_event['SerialNumber'].set()
-        elif label == 5: # Get recieved DMX frame
+        elif label == 5: # Get received DMX frame
             self.dmxRX["status"] = message[0]
-            self.dmxRX["frame"] = message[2:-1]
+            fr = message[2:-1]
+            self.dmxRX["frame"] = fr
+            if fr != self.dmxRXDelta:
+                self.dmxRXDelta = fr
+                #TODO: because buggy Enttec?  For some reason the lbl 9 trigger code doesn't work
+                self.receivedEvent.set()
+                self.receivedEvent.clear()
+        elif label == 9:
+            self.receivedEvent.set()
+            self.receivedEvent.clear()
         elif label == 3: # Get widget parameters reply
             self.widget['UserParameters']['FirmwareVersion'][0] = message[0]
             self.widget['UserParameters']['FirmwareVersion'][1] = message[1]
             if message[2] >=9 and message[2] <= 127:
                 self.widget['UserParameters']['DMXBreak'] = message[2]
             else:
-                raise UsbDmxProException("ERROR: The DMX reak time recieved from the widget is invalid.  Expected range: 9 to 127. Actual value: {0}".format(message[2]))
+                raise UsbDmxProException("ERROR: The DMX reak time received from the widget is invalid.  Expected range: 9 to 127. Actual value: {0}".format(message[2]))
             if message[3] >=1 and message[3] <= 127:
                 self.widget['UserParameters']['DMXMarkAfterBreak'] = message[3]
             else:
-                raise UsbDmxProException("ERROR: The DMX mark after break time recieved from the widget is invalid.  Expected range: 1 to 127. Actual value: {0}".format(message[3]))
+                raise UsbDmxProException("ERROR: The DMX mark after break time received from the widget is invalid.  Expected range: 1 to 127. Actual value: {0}".format(message[3]))
             if message[4] >=1 and message[2] <= 40:
                 self.widget['UserParameters']['DMXRate'] = message[4]
             else:
-                raise UsbDmxProException("ERROR: The DMX Break time recieved from the widget is invalid.  Expected range: 1 to 40. Actual value: {0}".format(message[4]))
+                raise UsbDmxProException("ERROR: The DMX Break time received from the widget is invalid.  Expected range: 1 to 40. Actual value: {0}".format(message[4]))
             self.widget_event['UserParameters'].set()
 
             
@@ -188,7 +207,7 @@ class EnttecUsbDmxPro:
         # WARNING: Some third-party DMX Pro Compatible devices DO NOT support this operation
         self.sendmsg(3,[1,0])
         if not self.widget_event['UserParameters'].wait(5):
-            raise UsbDmxProException("Widget parameters not recieved!")
+            raise UsbDmxProException("Widget parameters not received!")
         else:
             self.widget_event['UserParameters'].clear()
             return self.widget['UserParameters']
@@ -203,7 +222,7 @@ class EnttecUsbDmxPro:
         # WARNING: Some third-party DMX Pro Compatible devices DO NOT support this operation
         self.sendmsg(10)
         if not self.widget_event['SerialNumber'].wait(5):
-            raise UsbDmxProException("Widget serial number not recieved!")
+            raise UsbDmxProException("Widget serial number not received!")
         else:
             self.widget_event['SerialNumber'].clear()
             return self.widget['SerialNumber']
@@ -216,22 +235,56 @@ class EnttecUsbDmxPro:
         self.sendmsg(6,data)
         
 # RDM
-    def getRecievedFrame(self):
-        # Returns the last DMX frame recieved from the widget
+    def getReceivedFrame(self):
+        # Returns the last DMX frame received from the widget
         return self.dmxRX
+    
+    def getNextFrame(self):
+        # will block and wait for the next frame
+        self.waitForFrame()
+        return self.getReceivedFrame()
+
+    def getFrameDiff(self):
+        frame = []
+        frame.append(self.getReceivedFrame["frame"])
+        self.dmxprint(frame[0])
+    def waitForFrame(self):
+        # block until the next frame is received
+        self.receivedEvent.wait()
         
     def requestRDM(self):
         # Sends an RDM packet on the DMX and changes the direction to input to recieve it
         raise NotImplemented("The function requestRDM in EnttecUsbDmxPro is not implemeted yet")
         
-    def requestDmxOnChange(self):
+    def setDmxOnChange(self, enabled=True):
         # Tells the widget to only send the DMX packet to the comptuer if the 
         #  values have changed on the input port
-        raise NotImplemented("The function requestDmxOnChange in EnttecUsbDmxPro is not implemeted yet")
+        print("Setting DMX on change")
+        if enabled:
+            self.sendmsg(8,[1])
+        else:
+            self.sendmsg(8,[0])
         
     def sendRdmDiscovery(self):
         # Sends an RDM discovery packet
         raise NotImplemented("The function sendRdmDiscovery in EnttecUsbDmxPro is not implemeted yet")
+
+    def dmxprint(data):
+        sys.stdout.write()
+        if len(data) == 0:
+            sys.stdout.write("[]\n")
+            return
+        sys.stdout.write("[")
+        for i in data:
+            if i < 10:
+                sys.stdout.write("  {0}".format(i))
+            elif i < 100:
+                sys.stdout.write(" {0}".format(i))
+            else:
+                sys.stdout.write("{0}".format(i))
+            sys.stdout.write(", ")
+        sys.stdout.write("\b\b")
+        sys.stdout.write("]\n")
 
 # Exceptions for handling DMX errors
 class DMXException(Exception):
